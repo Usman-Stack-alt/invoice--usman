@@ -1,0 +1,22 @@
+meta {
+  name: Readiness (quota left)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/readyz
+  body: none
+  auth: none
+}
+
+docs {
+  Shows the Tesseract version, DOCX support and the Gemini state (mode, model, remaining requests today / this minute).
+}
+
+tests {
+  test("ready", function() {
+    expect(res.status).to.equal(200);
+    expect(res.body.tesseract).to.match(/^5/);
+  });
+}

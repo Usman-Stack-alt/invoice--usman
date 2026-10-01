@@ -1,0 +1,39 @@
+meta {
+  name: Extract one invoice
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/extract?llm=off
+  body: multipartForm
+  auth: none
+}
+
+params:query {
+  llm: off
+}
+
+headers {
+  X-API-Key: {{apiKey}}
+}
+
+body:multipart-form {
+  file: @file(samples/invoice_seller_client.jpg)
+}
+
+tests {
+  test("returns clean JSON", function() {
+    expect(res.status).to.equal(200);
+    expect(res.body.invoice.invoice_number).to.equal("51109338");
+    expect(res.body.summary.total).to.equal(6204.19);
+    expect(res.body.meta.status).to.equal("ok");
+  });
+}
+
+docs {
+  Change the file in the Body tab: any JPG, PNG, PDF or DOCX invoice.
+  Query param "llm" is switched off by default (tick it in the Params tab to try it): auto | always | off.
+  "always" calls Gemini and uses your daily quota (the same file twice is cached and free).
+  To see the 401 error, untick the X-API-Key header.
+}

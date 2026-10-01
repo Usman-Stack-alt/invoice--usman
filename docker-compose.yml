@@ -1,0 +1,12 @@
+services:
+  api:
+    build: .
+    env_file: [.env]
+    ports: ["${API_PORT:-8000}:8000"]
+    environment:
+      LLM_STATE_DIR: /data/llm  # quota counter + LLM result cache survive rebuilds and restarts
+    volumes: [llm_state:/data/llm]
+    restart: unless-stopped
+
+volumes:
+  llm_state:
