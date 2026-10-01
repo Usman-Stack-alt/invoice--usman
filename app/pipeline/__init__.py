@@ -1,8 +1,4 @@
-"""Invoice extraction pipeline: bytes -> clean InvoiceData.
-
-load (image / PDF / DOCX) -> word boxes (PDF text layer, else Tesseract 5 on a
-deskewed raster) -> layout parser -> arithmetic validation -> confidence.
-"""
+"""Invoice extraction: bytes -> InvoiceData (load, OCR or PDF text, parse, validate, optional LLM)."""
 
 import logging
 import time
@@ -32,8 +28,7 @@ __all__ = ["ExtractionError", "extract"]
 
 
 def _merge(pages: list[PageParse]) -> PageParse:
-    """Multi-page: header/parties from the first page that has them, items concatenated,
-    summary from the last page that has a total."""
+    """Multi-page: header and parties from the first page that has them, items joined, summary from the last."""
     m = PageParse()
     for p in pages:
         m.number = m.number or p.number

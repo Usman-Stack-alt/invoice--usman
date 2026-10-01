@@ -1,8 +1,4 @@
-"""Gemini fallback: reads the document itself and returns the same fields the rules extract.
-
-Used only when the rules result looks unreliable (or LLM_MODE=always). It never raises into the pipeline:
-every problem becomes an LLMSkipped with a code that ends up in meta.warnings, and the rules result is returned.
-"""
+"""Gemini fallback. Never raises into the pipeline: every problem becomes an LLMSkipped code."""
 
 import hashlib
 import io
@@ -36,7 +32,6 @@ class LLMSkipped(Exception):
         self.code = code
 
 
-# ---- schema Gemini must follow (flat and nullable: "absent" must be expressible) ------------------------
 class LLMParty(BaseModel):
     name: str | None = None
     address: str | None = None
@@ -96,7 +91,6 @@ Rules:
 - Ignore handwriting, stamps and footers that are not data."""
 
 
-# ---- availability / quota -------------------------------------------------------------------------------
 def _limiter() -> QuotaLimiter:
     s = get_settings()
     return QuotaLimiter(s.llm_state_dir, s.llm_rpm, s.llm_rpd)
@@ -130,7 +124,6 @@ def should_call(mode: str, result: InvoiceData) -> bool:
     return result.meta.status == "needs_review" or key_missing or no_parties
 
 
-# ---- payload / cache ------------------------------------------------------------------------------------
 def _payload(data: bytes) -> tuple[bytes, str]:
     """PDF goes as is. Images are re-encoded: upright, RGB, at most 2048 px, JPEG (TIFF is unsupported by Gemini)."""
     kind = sniff(data)
@@ -202,7 +195,7 @@ def extract_with_llm(data: bytes) -> LLMInvoice:
         out = LLMInvoice.model_validate(json.loads(resp.text or ""))
     except Exception as e:
         detail = {"error": type(e).__name__, "ms": int((time.perf_counter() - t0) * 1000), "model": s.llm_model}
-        # Google's own error (HTTP code, status, message) is what makes a failure diagnosable; it holds no key or document data
+        # Google's error code and message are safe to log: no key or document data
         for attr, key in (("code", "http_status"), ("status", "google_status"), ("message", "google_message")):
             if (val := getattr(e, attr, None)) is not None:
                 detail[key] = str(val)[:300]

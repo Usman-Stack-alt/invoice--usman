@@ -1,14 +1,4 @@
-"""Combine the rules result with the LLM answer, field by field.
-
-Policy (the LLM is never trusted blindly):
-- rules value empty            -> take the LLM value
-- both present and equal       -> keep
-- both present and different   -> if the rules result was trusted (status ok) keep the rules value,
-                                  otherwise take the LLM value
-- line items and summary       -> choose the combination that passes the arithmetic checks (fewest failures);
-                                  ties go to the rules when trusted, to the LLM otherwise
-The caller re-validates and re-scores the merged result.
-"""
+"""Merge the rules result with the LLM answer, field by field (policy: README, "LLM fallback")."""
 
 import math
 import re
@@ -72,7 +62,6 @@ def merge(rules: InvoiceData, llm: LLMInvoice, trusted: bool) -> tuple[InvoiceDa
         if from_llm:
             taken.append(path)
 
-    # --- invoice header
     m = out.invoice
     for f in ("invoice_number", "date", "due_date", "currency"):
         cand = getattr(llm, f)
@@ -84,7 +73,6 @@ def merge(rules: InvoiceData, llm: LLMInvoice, trusted: bool) -> tuple[InvoiceDa
         setattr(m, f, val)
         take(f"invoice.{f}", got)
 
-    # --- parties (a seller guessed from the letterhead is not trusted)
     for role in ("seller", "client"):
         theirs, mine = getattr(llm, role), getattr(out, role)
         if theirs is None:
@@ -96,14 +84,12 @@ def merge(rules: InvoiceData, llm: LLMInvoice, trusted: bool) -> tuple[InvoiceDa
             take(f"{role}.{f}", got)
         setattr(out, role, Party(**mine.model_dump()))
 
-    # --- payment
     if llm.payment:
         for f in Payment.model_fields:
             val, got = _pick(getattr(out.payment, f), getattr(llm.payment, f, None), trusted)
             setattr(out.payment, f, val)
             take(f"payment.{f}", got)
 
-    # --- items + summary: choose by arithmetic
     llm_items = _items(llm.items)
     llm_sum = Summary(**{f: getattr(llm, f) for f in _SUMMARY_FIELDS})
     candidates = [("rules", out.items, out.summary), ("llm", llm_items, llm_sum)]
@@ -117,17 +103,17 @@ def merge(rules: InvoiceData, llm: LLMInvoice, trusted: bool) -> tuple[InvoiceDa
         order = [("llm", "llm"), ("rules", "rules"), ("llm", "rules"), ("rules", "llm")]
     pool = {n: (i, s) for n, i, s in candidates}
     combos = [(a, b) for a, b in order if a in pool and b in pool]
-    best = min(combos, key=lambda c: _problems(pool[c[0]][0], pool[c[1]][1]))  # min() is stable: ties keep `order`
+    best = min(combos, key=lambda c: _problems(pool[c[0]][0], pool[c[1]][1]))
     out.items = [it.model_copy(update={"line": n}) for n, it in enumerate(pool[best[0]][0], start=1)]
     if best[0] == "llm" and llm_items:
         taken.append("items")
     chosen, other = (out.summary, llm_sum) if best[1] == "rules" else (llm_sum, out.summary)
     merged_sum = chosen.model_copy(deep=True)
-    for f in _SUMMARY_FIELDS:  # fill gaps from the other side
+    for f in _SUMMARY_FIELDS:
         if getattr(merged_sum, f) is None:
             setattr(merged_sum, f, getattr(other, f))
     merged_sum.other_charges = rules.summary.other_charges  # the LLM schema has no charges list
-    for f in _SUMMARY_FIELDS:  # any value that differs from the rules value can only have come from the LLM
+    for f in _SUMMARY_FIELDS:
         rv, mv = getattr(rules.summary, f), getattr(merged_sum, f)
         take(f"summary.{f}", mv is not None and (rv is None or not _same(rv, mv)))
     out.summary = merged_sum

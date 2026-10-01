@@ -1,5 +1,4 @@
-"""Decode uploads (image / PDF / DOCX) into pages: either a clean grayscale raster for
-Tesseract, or the native text layer of a PDF (no OCR needed)."""
+"""Decode uploads (image, PDF, DOCX) into pages: a raster for OCR, or a PDF's own text layer."""
 
 import io
 import zipfile
@@ -73,7 +72,6 @@ def _pdf_pages(data: bytes) -> list[Page]:
     for page in list(doc)[: s.max_pdf_pages]:
         raw = page.get_text("words")
         if len(raw) >= MIN_TEXT_WORDS:
-            # Digital PDF: use the embedded text and its exact boxes. Faster and error-free.
             rot = page.rotation_matrix
             words = []
             for x0, y0, x1, y1, text, *_ in raw:
@@ -136,10 +134,7 @@ def _order_quad(pts: np.ndarray) -> np.ndarray:
 
 
 def _flatten_page(gray: np.ndarray) -> np.ndarray:
-    """Photo of a page on a desk: find the paper outline and warp it to a flat rectangle.
-
-    Looks for the outermost edge contour (paper boundary incl. banners and stamps). Does nothing when the
-    page already fills the frame (scans, screenshots) or when no convincing outline is found."""
+    """Photo on a desk: find the paper outline and warp it flat. No-op for full-frame scans."""
     h, w = gray.shape
     k = 800 / max(h, w) if max(h, w) > 800 else 1.0
     small = cv2.resize(gray, None, fx=k, fy=k, interpolation=cv2.INTER_AREA) if k != 1.0 else gray

@@ -1,5 +1,4 @@
-"""Structured logging. Every record carries the request id of the request that caused it, including records
-written from the worker thread that runs the pipeline. Invoice content is never logged: only counts, codes and timings."""
+"""Structured logs with a request id on every line. Invoice content is never logged."""
 
 import json
 import logging

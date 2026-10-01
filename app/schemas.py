@@ -77,7 +77,6 @@ class InvoiceData(BaseModel):
     meta: ExtractionMeta
 
 
-# ---- API models -------------------------------------------------------------
 class BatchItem(BaseModel):
     filename: str
     ok: bool

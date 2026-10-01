@@ -6,39 +6,35 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    env: str = "production"  # anything but "production" also serves /docs
+    env: str = "production"
     log_level: str = "INFO"
-    log_format: str = "json"  # json for production log collectors, text for readable local output
+    log_format: str = "json"
 
-    # Auth: comma separated list of accepted keys. Empty => auth disabled (local dev only).
-    api_keys: str = ""
-    cors_origins: str = ""  # comma separated, e.g. http://localhost:3000
+    api_keys: str = ""  # comma separated; empty disables auth (local dev only)
+    cors_origins: str = ""
 
     max_upload_mb: int = 15
     max_batch_files: int = 10
     max_pdf_pages: int = 10
     max_image_pixels: int = 60_000_000
 
-    # OCR
     tesseract_lang: str = "eng"
     tesseract_psm: int = 6
     ocr_timeout_s: int = 60
     libreoffice_timeout_s: int = 60
-    concurrency: int = 2  # documents processed in parallel per API process
-    # Ambiguous dates like 04/05/2020: "MDY" (US, matches the dataset) or "DMY"
+    concurrency: int = 2
     date_order: str = "MDY"
     review_threshold: float = 0.80
 
-    # LLM fallback (Gemini). Off unless a key is set. Quota defaults match the key's limits.
     gemini_api_key: str = ""
     gemini_base_url: str = ""  # tests only: point the SDK at a fake server
-    llm_mode: str = "auto"  # auto = only when the rules result looks unreliable | always | off
-    llm_model: str = "gemini-3.5-flash-lite"  # gemini-2.5-flash-lite is closed to new users (404) as of 2026-10
+    llm_mode: str = "auto"
+    llm_model: str = "gemini-3.5-flash-lite"
     llm_temperature: float = 0.0
     llm_timeout_s: int = 30
-    llm_rpm: int = 10  # requests per minute (rolling 60 s window)
-    llm_rpd: int = 20  # requests per day (resets at midnight Pacific, like Google's quota)
-    llm_state_dir: str = "/tmp/invoice-llm"  # shared by all worker processes: quota counter + result cache
+    llm_rpm: int = 10
+    llm_rpd: int = 20
+    llm_state_dir: str = "/tmp/invoice-llm"
 
     @property
     def api_key_set(self) -> set[str]:

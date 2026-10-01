@@ -1,9 +1,6 @@
-"""Quota guard for the LLM: never exceeds N requests per rolling minute or M per day.
+"""LLM request quota: at most N per rolling minute and M per day.
 
-State lives in a small JSON file protected by an exclusive file lock, so every gunicorn worker process in
-the container shares one counter. Linux only (fcntl). Replicas on other machines do NOT share it: give each
-replica its own share of the quota (LLM_RPM / LLM_RPD).
-"""
+The counter is a JSON file under an exclusive lock, shared by all worker processes of one container (Linux only)."""
 
 import fcntl
 import json
@@ -50,7 +47,7 @@ class QuotaLimiter:
     def _save(self, state: dict) -> None:
         tmp = self.dir / f"quota.json.{os.getpid()}.tmp"
         tmp.write_text(json.dumps(state))
-        tmp.replace(self.dir / "quota.json")  # atomic
+        tmp.replace(self.dir / "quota.json")
 
     def try_acquire(self) -> bool:
         """Reserve one request *before* making it. Every attempt counts, successful or not, as Google counts it."""

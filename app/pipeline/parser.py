@@ -1,9 +1,4 @@
-"""Layout-aware invoice parser.
-
-Works on Tesseract word boxes, not flat text: the table is located from its header
-row, columns are derived from header geometry, and rows are rebuilt from vertical
-position. Header fields, party blocks and totals are found by label.
-"""
+"""Layout-aware invoice parser: finds the table, parties and totals from word geometry and labels."""
 
 import re
 from collections.abc import Callable
@@ -51,7 +46,6 @@ class PageParse:
     table_found: bool = False
 
 
-# ---------------------------------------------------------------- header fields
 _INV_NO = re.compile(
     r"(?i)\b(?:invoice|inv|receipt|bill)\s*(?:no\.?|number|num\.?|nr\.?|#)(?![A-Za-z])\s*[:#.\-]?\s*([A-Z0-9][A-Z0-9\-/]*)"
 )
@@ -61,8 +55,7 @@ _NOT_ISSUE_DATE = re.compile(r"(?i)\bdue\b|date\s*paid|paid\s*date|date\s*of\s*p
 
 
 def _candidates(ln: Line) -> list[str]:
-    """Texts to try for 'label value' patterns: each cell alone, then each cell joined with its right neighbour.
-    Keeps text from unrelated columns on the same visual line out of the value."""
+    """Each cell alone, then each cell joined with its right neighbour (keeps other columns out of the value)."""
     texts = [" ".join(w.text for w in c) for c in _cells(ln)]
     return texts + [f"{a} {b}" for a, b in pairwise(texts)]
 
@@ -78,7 +71,6 @@ def _header_fields(lines: list[Line], out: PageParse, order: str) -> None:
                 out.date = parse_date(m[1], order)
 
 
-# ---------------------------------------------------------------------- parties
 _SELLER_ROLE = {"seller", "vendor", "supplier"}
 _SELLER_PRE = {"from", "sold by", "issued by"}
 # "Seller:", "From (Seller)", "To (Buyer)", "Bill To", "Client" ... label cell with nothing else in it
@@ -114,7 +106,7 @@ def _party_labels(lines: list[Line]) -> list[tuple[str, Word]]:
             m = _LABEL.match(" ".join(w.text for w in cell).strip())
             if not m or not (m["pre"] or m["role"]):
                 continue
-            if m["role"]:  # an explicit role word wins: "From (Seller)", "To (Buyer)"
+            if m["role"]:
                 role = "seller" if m["role"].lower() in _SELLER_ROLE else "client"
             else:
                 role = "seller" if re.sub(r"\s+", " ", m["pre"].lower()) in _SELLER_PRE else "client"
@@ -145,7 +137,7 @@ def _parse_party(col_lines: list[str]) -> dict:
 def _parties(lines: list[Line], width: int, stop_y: float, out: PageParse) -> None:
     labels = _party_labels(lines)
     tol = 0.02 * width
-    indent = 0.06 * width  # text under a label may be indented a little
+    indent = 0.06 * width
     for role, lw in labels:
         right = [o.x0 for _, o in labels if o is not lw and o.x0 > lw.x0 and abs(o.yc - lw.yc) < 2 * lw.h]
         x_lo, x_hi = lw.x0 - tol, (min(right) - tol if right else float("inf"))
@@ -191,8 +183,7 @@ def _ends_letterhead(ln: Line) -> bool:
 
 
 def _letterhead(lines: list[Line], stop_y: float, out: PageParse) -> bool:
-    """No 'From/Seller' label: the issuer is usually the first block on the page, above the document title.
-    Name = first line, then address / tax id / email from the lines that follow (phone and licence numbers are dropped)."""
+    """No seller label: take the issuer from the first block above the document title."""
     name, addr, tax, email = None, [], None, None
     for ln in lines:
         if ln.y >= stop_y or _TITLE.match(ln.text) or _party_labels([ln]) or _ends_letterhead(ln):
@@ -221,7 +212,6 @@ def _letterhead(lines: list[Line], stop_y: float, out: PageParse) -> bool:
     return True
 
 
-# ---------------------------------------------------------------------- payment
 _PAY_KEYS = [
     (r"(?:payment\s*)?reference|ref\.?", "reference"),
     (r"beneficiary|account\s*(?:holder|name)", "beneficiary"),
@@ -247,7 +237,6 @@ def _payment(lines: list[Line], out: PageParse) -> None:
                 break
 
 
-# ------------------------------------------------------------------------ table
 _HDR_KEYS = re.compile(r"(?i)^(qty|quantity|price|total|amount|net|gross|vat|tax|rate|um|uom|unit|units)")
 
 
@@ -316,8 +305,7 @@ _END = re.compile(
 
 
 def _is_table_end(ln: Line, num_zone_x: float, n_slots: int) -> bool:
-    """A keyword line ends the table when it sits in the numeric area (right-aligned summary
-    labels), is the word SUMMARY, or is not a data row (summary lines carry one amount, rows carry several)."""
+    """A summary keyword ends the table if it is right-aligned, says SUMMARY, or has fewer amounts than a data row."""
     if not _END.match(ln.text):
         return False
     first = ln.words[0]
@@ -328,8 +316,7 @@ def _is_table_end(ln: Line, num_zone_x: float, n_slots: int) -> bool:
 
 
 def _blocks(desc_lines: list[tuple[float, str, float]], n_anchors: int) -> list[list[tuple[float, str, float]]] | None:
-    """Group description lines into rows. Try several gap thresholds, keep one that
-    yields exactly one block per numeric anchor."""
+    """Group description lines into rows, trying gap thresholds until blocks match the number of numeric rows."""
     if not desc_lines:
         return []
     h = median(h for _, _, h in desc_lines)
@@ -444,7 +431,6 @@ def _parse_table(lines: list[Line], hdr: int, width: int, out: PageParse, reread
     return end
 
 
-# ---------------------------------------------------------------------- summary
 _TAIL_OK = re.compile(r"^[$€£]$|^[A-Z]{3}$")
 
 
@@ -497,7 +483,6 @@ def _summary(lines: list[Line], out: PageParse) -> None:
         s["total"] = s["amount_due"]  # unpaid invoice that only states the amount due
 
 
-# ------------------------------------------------------------------------- main
 def parse_page(words: list[Word], width: int, date_order: str = "MDY", reread: Reread | None = None) -> PageParse:
     out = PageParse()
     lines = group_lines(words)
